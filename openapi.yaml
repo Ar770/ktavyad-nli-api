@@ -52,13 +52,6 @@ info:
       -F "output_format=alto"
     ```
     
-    **Security Features:**
-    - Keys are hashed before storage (never stored in plaintext)
-    - Keys can be scoped with specific permissions
-    - Keys can be revoked instantly
-    - Support for key rotation with grace periods
-    - Usage tracking per key
-    
     **Managing Keys:**
     - List keys: `GET /api/keys`
     - Get key info: `GET /api/keys/{key_id}`

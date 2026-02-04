@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: KavAI API NLI
+  title: KtavAI API NLI
   description: |
     
     ## Authentication & Authorization

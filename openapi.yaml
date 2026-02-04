@@ -52,6 +52,13 @@ info:
       -F "output_format=alto"
     ```
     
+    **Security Features:**
+    - Keys are hashed before storage (never stored in plaintext)
+    - Keys can be scoped with specific permissions
+    - Keys can be revoked instantly
+    - Support for key rotation with grace periods
+    - Usage tracking per key
+    
     **Managing Keys:**
     - List keys: `GET /api/keys`
     - Get key info: `GET /api/keys/{key_id}`
@@ -474,31 +481,31 @@ paths:
                 image:
                   type: string
                   format: binary
-                  description: Image file (PNG, JPG, TIFF)
+                  description: Image file to process (PNG, JPG, TIFF)
                 output_format:
                   type: string
                   enum: [alto, hocr]
                   default: alto
-                  description: Output format
+                  description: XML format for OCR output (ALTO or hOCR standard)
                 text_direction:
                   type: string
                   enum: [rtl, ltr]
                   default: rtl
-                  description: Text reading direction
+                  description: Reading direction (rtl for Hebrew/Arabic, ltr for Latin scripts)
                 enhance:
                   type: boolean
                   default: false
-                  description: Apply AI enhancement (if enabled)
+                  description: Enable AI-powered text enhancement/correction
                 include_text:
                   type: boolean
                   default: false
-                  description: Include plain text in response
+                  description: Return plain text alongside XML output
                 output_gcs_path:
                   type: string
-                  description: GCS path to save XML (e.g. gs://bucket/output.xml)
+                  description: Optional GCS destination for XML results (e.g. gs://bucket/output.xml)
                 output_text_gcs_path:
                   type: string
-                  description: GCS path to save plain text (e.g. gs://bucket/output.txt)
+                  description: Optional GCS destination for plain text (e.g. gs://bucket/output.txt)
               required:
                 - image
           application/json:
@@ -507,28 +514,32 @@ paths:
               properties:
                 input_gcs_path:
                   type: string
-                  description: Cloud storage path to input image (gs://bucket/path or https://storage.googleapis.com/bucket/path)
+                  description: GCS URI of the image to process (gs://bucket/path or https://storage.googleapis.com/bucket/path)
                   example: gs://my-bucket/images/page1.jpg
                 output_format:
                   type: string
                   enum: [alto, hocr]
                   default: alto
+                  description: XML format for OCR output (ALTO or hOCR standard)
                 text_direction:
                   type: string
                   enum: [rtl, ltr]
                   default: rtl
+                  description: Reading direction (rtl for Hebrew/Arabic, ltr for Latin scripts)
                 enhance:
                   type: boolean
                   default: false
+                  description: Enable AI-powered text enhancement/correction
                 include_text:
                   type: boolean
                   default: false
+                  description: Return plain text alongside XML output
                 output_gcs_path:
                   type: string
-                  description: Cloud storage path to save XML
+                  description: Optional GCS destination for XML results
                 output_text_gcs_path:
                   type: string
-                  description: Cloud storage path to save text
+                  description: Optional GCS destination for plain text
               required:
                 - input_gcs_path
       responses:
@@ -606,21 +617,25 @@ paths:
                 pdf:
                   type: string
                   format: binary
-                  description: PDF file
+                  description: PDF document to process (all pages will be OCR'd)
                 output_format:
                   type: string
                   enum: [alto, hocr]
                   default: alto
+                  description: XML format for OCR output per page (ALTO or hOCR standard)
                 text_direction:
                   type: string
                   enum: [rtl, ltr]
                   default: rtl
+                  description: Reading direction (rtl for Hebrew/Arabic, ltr for Latin scripts)
                 enhance:
                   type: boolean
                   default: false
+                  description: Enable AI-powered text enhancement/correction
                 include_text:
                   type: boolean
                   default: false
+                  description: Return plain text alongside XML output
               required:
                 - pdf
       responses:
@@ -705,11 +720,11 @@ paths:
               properties:
                 input_gcs_path:
                   type: string
-                  description: Cloud storage path to input JSONL file
+                  description: GCS URI of JSONL file containing batch requests (one image per line)
                   example: gs://bucket/input.jsonl
                 output_gcs_path:
                   type: string
-                  description: Cloud storage output prefix
+                  description: GCS directory prefix where results will be saved
                   example: gs://bucket/output/
               required:
                 - input_gcs_path
@@ -866,22 +881,22 @@ paths:
               properties:
                 name:
                   type: string
-                  description: Human-readable name for this key
+                  description: Descriptive name for identifying this key (e.g., "Production Server", "CI/CD Pipeline")
                   example: Production Server
                 permissions:
                   type: array
-                  description: Permissions for this key (default read, write, batch)
+                  description: Access levels granted to this key (default read, write, batch)
                   items:
                     type: string
                     enum: [read, write, batch, admin]
                   example: [read, write, batch]
                 is_test:
                   type: boolean
-                  description: Create a test key (sk_test_) instead of live key
+                  description: Generate test key (sk_test_) instead of production key (sk_live_)
                   default: false
                 expires_days:
                   type: integer
-                  description: Optional expiration in days (omit for no expiration)
+                  description: Days until key expires (omit for permanent key)
                   example: 365
               required:
                 - name
@@ -920,7 +935,7 @@ paths:
       parameters:
         - name: include_inactive
           in: query
-          description: Include revoked/expired keys
+          description: Include revoked/expired keys in the list
           schema:
             type: boolean
             default: false
@@ -1047,7 +1062,7 @@ paths:
               properties:
                 grace_period_days:
                   type: integer
-                  description: Days before old key expires
+                  description: Days before old key expires (allows gradual migration to new key)
                   default: 30
                   example: 30
       responses:

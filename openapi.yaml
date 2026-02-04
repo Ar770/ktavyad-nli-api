@@ -1,0 +1,1096 @@
+openapi: 3.0.3
+info:
+  title: KavAI API NLI
+  description: |
+    
+    ## Authentication & Authorization
+    
+    The API supports **two authentication methods**:
+    
+    ### Method 1: API Keys (Recommended for Automation)
+    
+    **Permanent tokens that never expire** - Best for automated systems, CI/CD, and production workflows.
+    
+    **Key Format:**
+    - Production: `sk_live_XXXXXXXXXXXXXXXXXXXX`
+    - Test: `sk_test_XXXXXXXXXXXXXXXXXXXX`
+    
+    **Getting API Keys:**
+    
+    ```bash
+    # Step 1: Authenticate with Google ID token first (one-time)
+    gcloud auth login
+    export TOKEN=$(gcloud auth print-identity-token)
+    
+    # Step 2: Create an API key
+    curl -X POST https://api-htr-models-120581744119.us-central1.run.app/api/keys \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "Production Server",
+        "permissions": ["read", "write", "batch"]
+      }'
+    
+    # Response contains your API key (save it securely!):
+    # {
+    #   "api_key": "sk_live_abcdef123456...",
+    #   "key_id": "key_xyz",
+    #   "warning": "Save this API key now. You won't be able to see it again!"
+    # }
+    ```
+    
+    **Using API Keys:**
+    
+    ```bash
+    # Store your API key securely
+    export KTAVAI_API_KEY="sk_live_your_key_here"
+    
+    # Use in API requests
+    curl -X POST https://api-htr-models-120581744119.us-central1.run.app/api/process-image \
+      -H "Authorization: Bearer $KTAVAI_API_KEY" \
+      -F "image=@document.jpg" \
+      -F "output_format=alto"
+    ```
+    
+    **Security Features:**
+    - Keys are hashed before storage (never stored in plaintext)
+    - Keys can be scoped with specific permissions
+    - Keys can be revoked instantly
+    - Support for key rotation with grace periods
+    - Usage tracking per key
+    
+    **Managing Keys:**
+    - List keys: `GET /api/keys`
+    - Get key info: `GET /api/keys/{key_id}`
+    - Revoke key: `DELETE /api/keys/{key_id}`
+    - Rotate key: `POST /api/keys/{key_id}/rotate`
+    
+    ---
+    
+    ### Method 2: Google ID Tokens (Interactive Use)
+    
+    **Short-lived tokens (1 hour)** - Best for interactive use, testing, and development.
+    
+    **Step 1: Contact Support**
+    - Email: arie@ktavyad.com
+    - Provide your Google account email(s)
+    - Your organization will be set up as a client, and your emails will be authorized
+    
+    **Step 2: Authenticate with gcloud**
+    
+    ```bash
+    # Authenticate with Google
+    gcloud auth login
+    
+    # Get your ID token
+    gcloud auth print-identity-token
+    ```
+    
+    **Step 3: Make API Requests**
+    
+    Include the token in the `Authorization` header:
+    ```bash
+    curl -X POST https://api-htr-models-120581744119.us-central1.run.app/api/process-image \
+      -H "Authorization: Bearer YOUR_GOOGLE_ID_TOKEN" \
+      -F "image=@document.jpg" \
+      -F "output_format=alto"
+    ```
+    
+    ### Token Expiration
+    
+    - **API Keys**: Never expire (unless explicitly set during creation)
+    - **Google ID tokens**: Expire after **1 hour** - refresh with `gcloud auth print-identity-token`
+    
+    ### Error Responses
+    
+    - **401 Unauthorized**: Token/key is invalid, expired, or missing
+    - **403 Forbidden**: Not authorized for this resource
+    
+    ## Support
+    
+    For API access or authorization:
+    - **Email**: arie@ktavyad.com
+    - **Information needed**: Google account email(s), organization name
+
+  version: 2.0.0
+  contact:
+    name: Ktavyad API Support
+    email: arie@ktavyad.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://api-htr-models-120581744119.us-central1.run.app
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: OCR
+    description: Single image and PDF processing
+  - name: Batch Processing
+    description: Process multiple images from cloud storage
+  - name: API Keys
+    description: Manage permanent API keys for automated access
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        **Two authentication methods supported:**
+        
+        **1. API Keys (Recommended for automation):**
+        - Format: `sk_live_XXXXXXXXXXXX` or `sk_test_XXXXXXXXXXXX`
+        - Never expire (unless explicitly set)
+        - Created via `/api/keys` endpoint
+        - Example: `Authorization: Bearer sk_live_abc123...`
+        
+        **2. Google ID Tokens (For interactive use):**
+        - Get token: `gcloud auth print-identity-token`
+        - Expires after 1 hour
+        - Example: `Authorization: Bearer eyJhbGc...`
+        
+        **Authentication Flow:**
+        1. Your Google email must be authorized OR use a valid API key
+        2. For API keys: Create once, use forever
+        3. For Google tokens: Authenticate with gcloud and get fresh token
+        4. Include in requests: `Authorization: Bearer YOUR_TOKEN_OR_KEY`
+        
+        **Security:**
+        - API keys are hashed before storage
+        - Keys can be scoped with permissions
+        - Keys can be rotated or revoked instantly
+        - All requests are tracked for audit purposes
+      
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: string
+          description: Additional error details
+      required:
+        - error
+        
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: KtavAI API
+        version:
+          type: string
+          example: "2.0"
+          
+    OCRResult:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        filename:
+          type: string
+          example: document.jpg
+        line_count:
+          type: integer
+          description: Number of detected text lines
+          example: 42
+        char_count:
+          type: integer
+          description: Total character count
+          example: 1523
+        processing_time:
+          type: number
+          format: float
+          description: Processing time in seconds
+          example: 2.3
+        xml:
+          type: string
+          description: ALTO or hOCR XML output
+          example: "<?xml version='1.0' encoding='UTF-8'?><alto>...</alto>"
+        text:
+          type: string
+          description: Plain text transcription (if requested)
+          example: "Hebrew text content..."
+      required:
+        - status
+        - filename
+        - line_count
+        - char_count
+        - processing_time
+        - xml
+          
+    OCRResultGCS:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        filename:
+          type: string
+          example: document.jpg
+        line_count:
+          type: integer
+          example: 42
+        char_count:
+          type: integer
+          example: 1523
+        processing_time:
+          type: number
+          format: float
+          example: 2.3
+        xml_path:
+          type: string
+          description: GCS path where XML was saved
+          example: gs://bucket/output/result.xml
+        text_path:
+          type: string
+          description: GCS path where text was saved (if requested)
+          example: gs://bucket/output/result.txt
+      required:
+        - status
+        - filename
+        - line_count
+        - char_count
+        - processing_time
+        - xml_path
+    
+    PDFResult:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        filename:
+          type: string
+          example: document.pdf
+        total_pages:
+          type: integer
+          example: 10
+        total_lines:
+          type: integer
+          example: 420
+        total_chars:
+          type: integer
+          example: 15230
+        total_processing_time:
+          type: number
+          format: float
+          example: 23.5
+        pages:
+          type: object
+          description: Results per page number
+          additionalProperties:
+            type: object
+            properties:
+              line_count:
+                type: integer
+              char_count:
+                type: integer
+              processing_time:
+                type: number
+              error:
+                type: string
+      required:
+        - status
+        - filename
+        - total_pages
+        - total_lines
+        - total_chars
+        - total_processing_time
+        - pages
+    
+    APIKey:
+      type: object
+      properties:
+        api_key:
+          type: string
+          description: The actual API key (shown only once during creation!)
+          example: sk_live_abc123xyz456def789
+        key_id:
+          type: string
+          description: Unique identifier for this key
+          example: key_xyz123
+        name:
+          type: string
+          description: Human-readable name for the key
+          example: Production Server
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: [read, write, batch, admin]
+          example: [read, write, batch]
+        is_test:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        warning:
+          type: string
+          example: "Save this API key now. You won't be able to see it again!"
+    
+    APIKeyInfo:
+      type: object
+      properties:
+        key_id:
+          type: string
+          example: key_xyz123
+        name:
+          type: string
+          example: Production Server
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [read, write, batch]
+        is_test:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        usage_count:
+          type: integer
+          example: 1500
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          
+    VertexBatchJobResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: Unique batch job identifier
+        job_name:
+          type: string
+        state:
+          type: string
+          enum: [JOB_STATE_PENDING, JOB_STATE_RUNNING, JOB_STATE_SUCCEEDED, JOB_STATE_FAILED, JOB_STATE_CANCELLED]
+        input_uri:
+          type: string
+        output_uri:
+          type: string
+        created_time:
+          type: string
+          format: date-time
+        status_url:
+          type: string
+          description: URL to check job status
+        results_url:
+          type: string
+          description: URL to get results after completion
+          
+    VertexBatchStatusResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+        display_name:
+          type: string
+        state:
+          type: string
+        input_config:
+          type: object
+        output_config:
+          type: object
+        create_time:
+          type: string
+          format: date-time
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        error:
+          type: object
+        completion_stats:
+          type: object
+          properties:
+            successful_count:
+              type: integer
+            failed_count:
+              type: integer
+            incomplete_count:
+              type: integer
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the API is running
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+                
+  /api/process-image:
+    post:
+      tags:
+        - OCR
+      summary: Process single image
+      description: |
+        Process a single image with OCR. Supports two input methods:
+        1. File upload (multipart/form-data)
+        2. GCS path (JSON)
+        
+        Returns ALTO XML or hOCR, with optional plain text extraction.
+        Can save results directly to GCS.
+        
+      operationId: processImage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Image file (PNG, JPG, TIFF)
+                output_format:
+                  type: string
+                  enum: [alto, hocr]
+                  default: alto
+                  description: Output format
+                text_direction:
+                  type: string
+                  enum: [rtl, ltr]
+                  default: rtl
+                  description: Text reading direction
+                enhance:
+                  type: boolean
+                  default: false
+                  description: Apply AI enhancement (if enabled)
+                include_text:
+                  type: boolean
+                  default: false
+                  description: Include plain text in response
+                output_gcs_path:
+                  type: string
+                  description: GCS path to save XML (e.g. gs://bucket/output.xml)
+                output_text_gcs_path:
+                  type: string
+                  description: GCS path to save plain text (e.g. gs://bucket/output.txt)
+              required:
+                - image
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_gcs_path:
+                  type: string
+                  description: Cloud storage path to input image (gs://bucket/path or https://storage.googleapis.com/bucket/path)
+                  example: gs://my-bucket/images/page1.jpg
+                output_format:
+                  type: string
+                  enum: [alto, hocr]
+                  default: alto
+                text_direction:
+                  type: string
+                  enum: [rtl, ltr]
+                  default: rtl
+                enhance:
+                  type: boolean
+                  default: false
+                include_text:
+                  type: boolean
+                  default: false
+                output_gcs_path:
+                  type: string
+                  description: Cloud storage path to save XML
+                output_text_gcs_path:
+                  type: string
+                  description: Cloud storage path to save text
+              required:
+                - input_gcs_path
+      responses:
+        '200':
+          description: OCR completed successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OCRResult'
+                  - $ref: '#/components/schemas/OCRResultGCS'
+              examples:
+                direct_response:
+                  summary: Direct XML/text response
+                  value:
+                    status: success
+                    filename: document.jpg
+                    line_count: 42
+                    char_count: 1523
+                    processing_time: 2.3
+                    xml: "<?xml version='1.0' encoding='UTF-8'?><alto xmlns='http://www.loc.gov/standards/alto/ns-v4#'>...</alto>"
+                    text: "Hebrew text content (if include_text=true)"
+                gcs_response:
+                  summary: GCS saved response
+                  value:
+                    status: success
+                    filename: document.jpg
+                    line_count: 42
+                    char_count: 1523
+                    processing_time: 2.3
+                    xml_path: gs://bucket/output/result.xml
+                    text_path: gs://bucket/output/result.txt
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Token is invalid, expired, or missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User email not in any client's authorized_emails list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/process-pdf:
+    post:
+      tags:
+        - OCR
+      summary: Process PDF document
+      description: |
+        Process all pages in a PDF document. Each page is processed separately
+        and results are combined or returned as separate outputs.
+        
+      operationId: processPDF
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                pdf:
+                  type: string
+                  format: binary
+                  description: PDF file
+                output_format:
+                  type: string
+                  enum: [alto, hocr]
+                  default: alto
+                text_direction:
+                  type: string
+                  enum: [rtl, ltr]
+                  default: rtl
+                enhance:
+                  type: boolean
+                  default: false
+                include_text:
+                  type: boolean
+                  default: false
+              required:
+                - pdf
+      responses:
+        '200':
+          description: PDF processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PDFResult'
+              examples:
+                pdf_response:
+                  summary: PDF processing result
+                  value:
+                    status: success
+                    filename: document.pdf
+                    total_pages: 10
+                    total_lines: 420
+                    total_chars: 15230
+                    total_processing_time: 23.5
+                    pages:
+                      "1":
+                        line_count: 42
+                        char_count: 1523
+                        processing_time: 2.3
+                        error: null
+                      "2":
+                        line_count: 38
+                        char_count: 1401
+                        processing_time: 2.1
+                        error: null
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Token is invalid, expired, or missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User email not in any client's authorized_emails list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/batch/submit:
+    post:
+      tags:
+        - Batch Processing
+      summary: Submit large-scale batch job
+      description: |
+        Submit a batch job for processing multiple images.
+        Best for large batch jobs (100+ images).
+        
+        Input JSONL format:
+        ```json
+        {"image_uri": "gs://bucket/img1.jpg", "output_format": "alto", "text_direction": "rtl"}
+        {"image_uri": "gs://bucket/img2.jpg", "output_format": "alto", "text_direction": "rtl"}
+        ```
+        
+        **Authorization**: Your Google account must be in a client's authorized_emails list.
+        
+        **Master User**: Can use `X-Client-ID` header to submit batch as specific client.
+        
+      operationId: submitBatchJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_gcs_path:
+                  type: string
+                  description: Cloud storage path to input JSONL file
+                  example: gs://bucket/input.jsonl
+                output_gcs_path:
+                  type: string
+                  description: Cloud storage output prefix
+                  example: gs://bucket/output/
+              required:
+                - input_gcs_path
+                - output_gcs_path
+      responses:
+        '202':
+          description: Batch job submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VertexBatchJobResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Vertex AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/batch/status/{job_id}:
+    get:
+      tags:
+        - Batch Processing
+      summary: Check batch job status
+      description: Get detailed status of a batch prediction job.
+        
+      operationId: getBatchJobStatus
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Batch job ID
+          schema:
+            type: string
+          example: projects/123/locations/us-central1/batchPredictionJobs/456
+      responses:
+        '200':
+          description: Job status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VertexBatchStatusResponse'
+        '401':
+          description: Unauthorized - Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/batch/results/{job_id}:
+    get:
+      tags:
+        - Batch Processing
+      summary: Get batch job results
+      description: |
+        Retrieve results from a completed batch job.
+        Results are read from cloud storage output location.
+        
+      operationId: getBatchJobResults
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Batch job ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Results retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                  output_location:
+                    type: string
+        '401':
+          description: Unauthorized - Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Job not found or not completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /api/keys:
+    post:
+      tags:
+        - API Keys
+      summary: Create a new API key
+      description: |
+        Create a permanent API key for automated access.
+        
+        **Requirements:**
+        - Must be authenticated with Google ID token
+        - Only admins can create keys
+        
+        **Response includes the API key only once** - save it securely!
+        
+      operationId: createAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Human-readable name for this key
+                  example: Production Server
+                permissions:
+                  type: array
+                  description: Permissions for this key (default read, write, batch)
+                  items:
+                    type: string
+                    enum: [read, write, batch, admin]
+                  example: [read, write, batch]
+                is_test:
+                  type: boolean
+                  description: Create a test key (sk_test_) instead of live key
+                  default: false
+                expires_days:
+                  type: integer
+                  description: Optional expiration in days (omit for no expiration)
+                  example: 365
+              required:
+                - name
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Only admins can create keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    get:
+      tags:
+        - API Keys
+      summary: List API keys
+      description: List all API keys for your client
+      operationId: listAPIKeys
+      parameters:
+        - name: include_inactive
+          in: query
+          description: Include revoked/expired keys
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: API keys retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIKeyInfo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /api/keys/{key_id}:
+    get:
+      tags:
+        - API Keys
+      summary: Get API key info
+      description: Get information about a specific API key
+      operationId: getAPIKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: API key info retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyInfo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      tags:
+        - API Keys
+      summary: Revoke API key
+      description: |
+        Revoke (deactivate) an API key immediately.
+        The key will no longer work for authentication.
+      operationId: revokeAPIKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: API key revoked successfully
+                  key_id:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Only admins can revoke keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /api/keys/{key_id}/rotate:
+    post:
+      tags:
+        - API Keys
+      summary: Rotate API key
+      description: |
+        Create a new API key and schedule the old one for expiration.
+        
+        **Best practice for key rotation:**
+        1. Call this endpoint to get a new key
+        2. Update your systems with the new key during grace period
+        3. Old key auto-expires after grace period
+        
+      operationId: rotateAPIKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grace_period_days:
+                  type: integer
+                  description: Days before old key expires
+                  default: 30
+                  example: 30
+      responses:
+        '201':
+          description: Key rotated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIKey'
+                  - type: object
+                    properties:
+                      old_key_id:
+                        type: string
+                      grace_period_days:
+                        type: integer
+                      old_key_expires_at:
+                        type: string
+                        format: date-time
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Only admins can rotate keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+

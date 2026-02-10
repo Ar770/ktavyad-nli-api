@@ -379,63 +379,158 @@ components:
           nullable: true
           
     VertexBatchJobResponse:
+      description: |
+        Response returned when submitting a new batch job via POST /api/batch/submit.
+        Contains initial job information. State is passed through from Vertex AI.
       type: object
       properties:
         job_id:
           type: string
-          description: Unique batch job identifier
+          description: Full Vertex AI batch job resource name (e.g., projects/123/locations/us-central1/batchPredictionJobs/456)
+          example: projects/123456/locations/us-central1/batchPredictionJobs/789
         job_name:
           type: string
+          description: Human-readable display name for the job
+          example: htr-batch-abc12345
         state:
           type: string
-          enum: [JOB_STATE_PENDING, JOB_STATE_RUNNING, JOB_STATE_SUCCEEDED, JOB_STATE_FAILED, JOB_STATE_CANCELLED]
+          description: |
+            Job state at submission time. This is a direct passthrough from Vertex AI's BatchPredictionJob.state.name.
+            Typically returns JOB_STATE_QUEUED (just created) or JOB_STATE_PENDING (preparing to run).
+            Defaults to JOB_STATE_PENDING if state is unavailable at submission time.
+            
+            Implementation: batch_prediction_job.state.name || 'JOB_STATE_PENDING'
+            
+            Poll /api/batch/status/{job_id} to get current state as job progresses.
+          example: JOB_STATE_PENDING
         input_uri:
           type: string
+          description: GCS URI of input JSONL file
+          example: gs://my-bucket/input/images.jsonl
         output_uri:
           type: string
+          description: GCS URI prefix where results will be written
+          example: gs://my-bucket/output/
         created_time:
           type: string
           format: date-time
+          description: Timestamp when job was created (passthrough from job.create_time)
+          example: "2026-02-10T10:00:00Z"
         status_url:
           type: string
-          description: URL to check job status
+          description: Relative URL to check job status (use GET /api/batch/status/{job_id})
+          example: /api/batch/status/789
         results_url:
           type: string
-          description: URL to get results after completion
+          description: Relative URL to get results when job completes (use GET /api/batch/results/{job_id})
+          example: /api/batch/results/789
           
     VertexBatchStatusResponse:
+      description: |
+        Response returned when checking job status via GET /api/batch/status/{job_id}.
+        Contains detailed job information. All fields are direct passthroughs from Vertex AI BatchPredictionJob.
+        State is returned exactly as provided by Vertex AI with no filtering.
       type: object
       properties:
         job_id:
           type: string
-        display_name:
+          description: Full Vertex AI batch job resource name (passthrough from job.resource_name)
+          example: projects/123456/locations/us-central1/batchPredictionJobs/789
+        job_name:
           type: string
+          description: Human-readable display name for the job (passthrough from job.display_name)
+          example: htr-batch-abc12345
         state:
           type: string
-        input_config:
-          type: object
-        output_config:
-          type: object
-        create_time:
+          enum: 
+            - JOB_STATE_UNSPECIFIED
+            - JOB_STATE_QUEUED
+            - JOB_STATE_PENDING
+            - JOB_STATE_RUNNING
+            - JOB_STATE_SUCCEEDED
+            - JOB_STATE_FAILED
+            - JOB_STATE_CANCELLING
+            - JOB_STATE_CANCELLED
+            - JOB_STATE_PAUSED
+            - JOB_STATE_EXPIRED
+            - JOB_STATE_UPDATING
+            - JOB_STATE_PARTIALLY_SUCCEEDED
+          description: |
+            Current state of the batch job. Direct passthrough from Vertex AI's job.state.name (no filtering).
+            
+            Implementation: job.state.name
+            
+            **Initial States:**
+            - JOB_STATE_UNSPECIFIED: Unspecified state
+            - JOB_STATE_QUEUED: Job just created/resumed, processing not yet begun
+            - JOB_STATE_PENDING: Service is preparing to run the job
+            
+            **Active States:**
+            - JOB_STATE_RUNNING: Job is actively processing
+            - JOB_STATE_CANCELLING: Job is being cancelled
+            - JOB_STATE_UPDATING: Job is being updated (only for RUNNING jobs)
+            
+            **Terminal States (job complete, can call /api/batch/results):**
+            - JOB_STATE_SUCCEEDED: All predictions completed successfully
+            - JOB_STATE_FAILED: Job failed with errors
+            - JOB_STATE_PARTIALLY_SUCCEEDED: Some predictions succeeded, some failed
+            - JOB_STATE_CANCELLED: Job has been cancelled
+            - JOB_STATE_EXPIRED: Job has expired
+            
+            **Pausable State:**
+            - JOB_STATE_PAUSED: Job stopped and can be resumed
+            
+            Note: /api/batch/results endpoint only accepts jobs in terminal states (SUCCEEDED, FAILED, PARTIALLY_SUCCEEDED).
+            
+            Source: https://cloud.google.com/vertex-ai/docs/reference/rest/v1/JobState
+          example: JOB_STATE_RUNNING
+        created_time:
           type: string
           format: date-time
+          description: Timestamp when job was created (passthrough from job.create_time)
+          example: "2026-02-10T10:00:00Z"
         start_time:
           type: string
           format: date-time
+          nullable: true
+          description: Timestamp when job started processing (passthrough from job.start_time, null if not started yet)
+          example: "2026-02-10T10:02:15Z"
         end_time:
           type: string
           format: date-time
-        error:
-          type: object
+          nullable: true
+          description: Timestamp when job completed (passthrough from job.end_time, null if still running)
+          example: "2026-02-10T10:45:30Z"
         completion_stats:
           type: object
+          nullable: true
+          description: Statistics on processed instances (passthrough from job.completion_stats, null if not available)
           properties:
             successful_count:
               type: integer
+              description: Number of instances processed successfully
+              example: 950
             failed_count:
               type: integer
+              description: Number of instances that failed
+              example: 2
             incomplete_count:
               type: integer
+              description: Number of instances not yet processed
+              example: 48
+        output_info:
+          type: object
+          nullable: true
+          description: Output information (passthrough from job.output_info, null if not available)
+          properties:
+            gcs_output_directory:
+              type: string
+              description: GCS directory where results are written
+              example: gs://my-bucket/output/
+        error:
+          type: string
+          nullable: true
+          description: Error message if job failed (passthrough from job.error.message, null otherwise)
 
 security:
   - BearerAuth: []
@@ -731,7 +826,10 @@ paths:
                 - output_gcs_path
       responses:
         '202':
-          description: Batch job submitted
+          description: |
+            Batch job submitted successfully. 
+            Returns VertexBatchJobResponse with state always set to JOB_STATE_PENDING.
+            Use the status_url to poll for job progress.
           content:
             application/json:
               schema:
@@ -766,7 +864,14 @@ paths:
       tags:
         - Batch Processing
       summary: Check batch job status
-      description: Get detailed status of a batch prediction job.
+      description: |
+        Get detailed status of a batch prediction job.
+        Returns VertexBatchStatusResponse with current job state, timing, and statistics.
+        Poll this endpoint periodically (every 30-60 seconds) until state reaches a terminal value:
+        - JOB_STATE_SUCCEEDED
+        - JOB_STATE_FAILED  
+        - JOB_STATE_CANCELLED
+        - JOB_STATE_PARTIALLY_SUCCEEDED
         
       operationId: getBatchJobStatus
       parameters:
@@ -779,7 +884,9 @@ paths:
           example: projects/123/locations/us-central1/batchPredictionJobs/456
       responses:
         '200':
-          description: Job status retrieved
+          description: |
+            Job status retrieved successfully.
+            Returns VertexBatchStatusResponse with current state and progress information.
           content:
             application/json:
               schema:
